@@ -42,14 +42,13 @@ func NewClient(baseURL string) *Client {
 		AddRetryCondition(func(r *resty.Response, err error) bool {
 			if err != nil {
 				var netErr net.Error
-				log.Debug().Err(err).Msg("request err")
 				if errors.As(err, &netErr) && netErr.Timeout() { return true }
 				return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF)
 			}
 			return r.StatusCode() == http.StatusTooManyRequests || r.StatusCode() > 499
 		}).
 		AddRetryHook(func(r *resty.Response, err error) {
-			if err != nil { log.Debug().Str("attempt", strconv.Itoa(r.Request.Attempt)).Err(err).Msg("Request attempt") }
+			if err != nil { log.Info().Str("attempt", strconv.Itoa(r.Request.Attempt)).Err(err).Msg("Request attempt") }
 		})
 	return &Client{ client: restyC }
 }
@@ -60,12 +59,15 @@ func (c *Client) Fetch(o *models.Order) error {
 		SetDoNotParseResponse(true).
 		Get(o.Number)
 	if err != nil {
-		log.Debug().Err(err).Msg("request err")
+		log.Error().Err(err).Msg("request err")
 		return err
 	}
 
 	defer resp.RawResponse.Body.Close()
 
+	if resp.StatusCode() > 299 {
+		return fmt.Errorf("response failed with code: %d", resp.StatusCode())
+	}
 
 	if resp.StatusCode() == http.StatusNoContent {
 		return nil

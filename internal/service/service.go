@@ -4,7 +4,6 @@ import(
 	"strconv"
 	"unicode/utf8"
 	"github.com/rs/zerolog/log"
-	"math"
 )
 
 type serviceError string
@@ -22,14 +21,16 @@ func CheckOrderNum(num string) error {
 	ndig := utf8.RuneCountInString(num)
 
 	if err != nil {
-		log.Debug().Err(err).Msgf("failed to parse order num: %v", err)
+		log.Error().Err(err).Msgf("failed to parse order num: %v", err)
 		return ErrParseOrderNum
 	}
 
 	var sum int
+	tmpNum := parsedNum
 
 	for i := 1; i <= ndig; i++ {
-		val := (parsedNum % int(math.Pow(10, float64(i)))) / int(math.Pow(10, float64(i-1)))
+		val := tmpNum % 10
+		tmpNum /= 10
 
 		if i % 2 == 0 {
 			val *= 2

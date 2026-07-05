@@ -23,7 +23,8 @@ func main() {
 	err := parseFlags(cfg)
 
 	if err != nil {
-		panic(fmt.Errorf("can't parse environment: %w", err))
+		log.Fatal().Err(err).Msg("can't parse environment")
+		return
 	}
 
 	if err := run(cfg); err != nil {
@@ -35,8 +36,7 @@ func main() {
 			log.Info().Msg("server gracefully shutted down")
 			return
 		}
-		log.Debug().Err(err).Msg("server crashed")
-		panic(err)
+		log.Fatal().Err(err).Msg("server crashed")
 	}
 }
 
@@ -49,11 +49,13 @@ func run(cfg *config) error {
 		return fmt.Errorf("failed initialize repository: %w", err)
 	}
 
-	var secret struct {
-		key []byte `yaml:"key"`
+	type secret struct {
+		Key string `yaml:"key"`
 	}
 
-	file, err := os.Open("../../config/secret.yml")
+	var s secret
+
+	file, err := os.Open(cfg.SecretPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("failed open file with secret :%w", err)
 	}
@@ -61,12 +63,12 @@ func run(cfg *config) error {
 	if file != nil {
 		dec := yaml.NewDecoder(file)
 
-		if err := dec.Decode(&secret); err != nil {
+		if err := dec.Decode(&s); err != nil {
 			return fmt.Errorf("failed parse yaml :%w", err)
 		}
 	}
 
-	c := handler.NewUsersController(repo, secret.key)
+	c := handler.NewUsersController(repo, []byte(s.Key))
 	r := chi.NewRouter()
 	c.ApplyTo(r)
 
@@ -78,7 +80,7 @@ func run(cfg *config) error {
 	})
 
 	g.Go(func() error {
-		return a.Start(errGrCtx)
+		return a.Start(errGrCtx, cfg.AgentConfig)
 	})
 
 	return g.Wait()

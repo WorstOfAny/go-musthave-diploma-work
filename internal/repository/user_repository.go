@@ -45,7 +45,7 @@ func (ur *userRepo) Register(ctx context.Context, u models.User) (int, error) {
 				return nil, fmt.Errorf("failed to start transaction: %w", err)
 			}
 			defer tx.Rollback(ctx)
-			rows, err := ur.db.Query(
+			rows, err := tx.Query(
 				ctx,
 				"INSERT INTO users (login, password_hash) VALUES (@login, crypt(@password, gen_salt('bf', 14))) RETURNING id",
 				pgx.NamedArgs{ "login": u.Login, "password": u.Password, },
@@ -65,7 +65,12 @@ func (ur *userRepo) Register(ctx context.Context, u models.User) (int, error) {
 				return 0, fmt.Errorf("failed to insert object to db: %w", err)
 			}
 
-			err = ur.repository.Balances.Create(ctx, id)
+			_, err = tx.Exec(
+				ctx,
+				"INSERT INTO balances (user_id) VALUES (@uid)",
+				pgx.NamedArgs{ "uid": id, },
+			)
+
 			if err != nil {
 				return 0, fmt.Errorf("failed to create balance for user: %w", err)
 			}
@@ -154,10 +159,9 @@ func (ur *userRepo) ExistByID(ctx context.Context, id int) (bool, error) {
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
-		} else {
-			log.Debug().Err(err).Msg("error in ExistByID")
-			return false, err
 		}
+		log.Error().Err(err).Msg("error in ExistByID")
+		return false, err
 	}
 
 	return true, nil

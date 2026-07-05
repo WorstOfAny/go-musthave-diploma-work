@@ -69,7 +69,7 @@ func (c *usersController) ApplyTo(mux chi.Router) {
 		r.Use(recoveryPanic, c.logRequest)
 		r.Post("/login", c.login)
 		r.With(checkJSON).Post("/register", c.register)
-		r.With(c.checkAuthorization).Route("/orders", func(r chi.Router) {
+		r.With(c.checkAuthorization, checkPlain).Route("/orders", func(r chi.Router) {
 			r.Post("/", c.postOrders)
 			r.Get("/", c.getOrders)
 		})
@@ -103,7 +103,7 @@ func (c *usersController) logRequest(next http.Handler) http.Handler {
 		reqDump, err := httputil.DumpRequest(r, true)
 
 		if err != nil {
-			log.Debug().
+			log.Error().
 				Err(err).
 				Msg("dump request error")
 		}
@@ -143,7 +143,7 @@ func (c *usersController) checkAuthorization(next http.Handler) http.Handler {
 		exist, err := c.repo.Users.ExistByID(r.Context(), userID)
 
 		if err != nil {
-			log.Debug().Err(err).Msg("error while checking user")
+			log.Error().Err(err).Msg("error while checking user")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -170,12 +170,12 @@ func getUserID(tokenString string, sk any) int {
 	})
 
 	if err != nil {
-		log.Debug().Err(err).Msgf("parse jwt error: %v", err)
+		log.Error().Err(err).Msgf("parse jwt error: %v", err)
 		return -1
 	}
 
 	if !token.Valid {
-		log.Debug().Interface("token", token).Msg("Token is not valid")
+		log.Error().Interface("token", token).Msg("Token is not valid")
 		return -1
 	}
 
@@ -214,7 +214,7 @@ func buildJWTString(userID int, sk any) (string, error) {
 
 	tokenString, err := token.SignedString(sk)
 	if err != nil {
-		log.Debug().Err(err).Msg("jwt error")
+		log.Error().Err(err).Msg("jwt error")
 		return "", fmt.Errorf("can't sign token: %w", err)
 	}
 
@@ -225,7 +225,7 @@ func (c *usersController) login(w http.ResponseWriter, r *http.Request) {
 	var u models.User
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&u); err != nil {
-		log.Debug().Err(err).Msgf("can't parse json: %v", err)
+		log.Error().Err(err).Msgf("can't parse json: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -243,7 +243,7 @@ func (c *usersController) login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := buildJWTString(uID, c.sk)
 	if err != nil {
-		log.Debug().Err(err).Msg("can't build jwt")
+		log.Error().Err(err).Msg("can't build jwt")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -257,7 +257,7 @@ func (c *usersController) register(w http.ResponseWriter, r *http.Request) {
 	var u models.User
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&u); err != nil {
-		log.Debug().Err(err).Msgf("can't parse json: %v", err)
+		log.Error().Err(err).Msgf("can't parse json: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -276,7 +276,7 @@ func (c *usersController) register(w http.ResponseWriter, r *http.Request) {
 
 	token, err := buildJWTString(uID, c.sk)
 	if err != nil {
-		log.Debug().Err(err).Msg("can't build jwt")
+		log.Error().Err(err).Msg("can't build jwt")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -292,7 +292,7 @@ func (c *usersController) postOrders(w http.ResponseWriter, r *http.Request) {
 	bytes, err := io.ReadAll(io.LimitReader(r.Body, 100))
 
 	if err != nil {
-		log.Debug().Err(err).Msgf("can't read from body: %v", err)
+		log.Error().Err(err).Msgf("can't read from body: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -304,7 +304,7 @@ func (c *usersController) postOrders(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
-		log.Debug().Err(err).Msgf("can't parse number: %v", err)
+		log.Error().Err(err).Msgf("can't parse number: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -344,7 +344,7 @@ func (c *usersController) getOrders(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(orders)
 
 	if err != nil {
-		log.Debug().Err(err).Msg("marshal error")
+		log.Error().Err(err).Msg("marshal error")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -363,7 +363,7 @@ func (c *usersController) balance(w http.ResponseWriter, r *http.Request) {
 
 	body, err := json.Marshal(balance)
 	if err != nil {
-		log.Debug().Err(err).Msg("marshal error")
+		log.Error().Err(err).Msg("marshal error")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -378,10 +378,10 @@ func (c *usersController) withdraw(w http.ResponseWriter, r *http.Request) {
 	err := dec.Decode(&wr)
 	if err != nil {
 		if errors.Is(err, service.ErrFormatOrderNum) {
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
-		log.Debug().Err(err).Msgf("can't parse json: %v", err)
+		log.Error().Err(err).Msgf("can't parse json: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -419,7 +419,7 @@ func (c *usersController) withdrawals(w http.ResponseWriter, r *http.Request) {
 	body, err := json.Marshal(wrRequests)
 
 	if err != nil {
-		log.Debug().Err(err).Msg("marshal error")
+		log.Error().Err(err).Msg("marshal error")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

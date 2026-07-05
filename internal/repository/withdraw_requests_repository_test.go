@@ -16,7 +16,7 @@ func TestWithdrawRequestCreate(t *testing.T) {
 	ctx, cancelFunc := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancelFunc()
 
-	repo, cfg, err := initRepo(ctx, "config/db_test.yml")
+	repo, cfg, err := initRepo(ctx, "../../config/db_test.yml")
 	if err != nil { t.Fatal(err) }
 
 	db, err := pgxpool.New(ctx, cfg.DatabaseDSN)
@@ -60,7 +60,7 @@ func TestWithdrawRequestList(t *testing.T) {
 	ctx, cancelFunc := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancelFunc()
 
-	repo, cfg, err := initRepo(ctx, "config/db_test.yml")
+	repo, cfg, err := initRepo(ctx, "../../config/db_test.yml")
 	if err != nil { t.Fatal(err) }
 
 	db, err := pgxpool.New(ctx, cfg.DatabaseDSN)

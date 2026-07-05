@@ -62,7 +62,7 @@ func NewRepository(ctx context.Context, cfg *RepoConfig) (*Repository, error) {
 
 func retry(request func() (any, error), maxRetries int) (any, error) {
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		log.Debug().Str("db attempt", strconv.Itoa(attempt)).Msg("db retry")
+		log.Info().Str("db attempt", strconv.Itoa(attempt)).Msg("db retry")
 		res, err := request()
 		if err == nil { return res, nil }
 

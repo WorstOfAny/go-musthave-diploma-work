@@ -16,6 +16,11 @@ type agent struct {
 	repo *repository.Repository
 }
 
+type Config struct {
+	WorkerCount int `env:"WORKER_COUNT"`
+	FetchOrderInterval int `env:"FETCH_ORDER_INTERVAL"`
+}
+
 // Создание нового агента для получения информации из системы расчёта и обновления заказов
 func NewAgent(repo *repository.Repository, accrualAddr string) *agent {
 	return &agent{
@@ -25,8 +30,10 @@ func NewAgent(repo *repository.Repository, accrualAddr string) *agent {
 }
 
 // Запуск агента
-func (a *agent) Start(ctx context.Context) error {
+func (a *agent) Start(ctx context.Context, cfg Config) error {
 	g, errGrCtx := errgroup.WithContext(ctx)
+	ticker := time.NewTicker(time.Duration(cfg.FetchOrderInterval) * time.Second)
+	defer ticker.Stop()
 
 	fetchOrdersJobs := make(chan func(context.Context) ([]models.Order, error))
 	g.Go(func() error {
@@ -34,7 +41,7 @@ func (a *agent) Start(ctx context.Context) error {
 		for {
 			select {
 				case <-errGrCtx.Done(): return nil
-				case <-time.After(time.Duration(5) * time.Second): fetchOrdersJobs <- a.repo.Orders.ListProcessing
+				case <-ticker.C: fetchOrdersJobs <- a.repo.Orders.ListProcessing
 			}
 		}
 	})
@@ -47,26 +54,25 @@ func (a *agent) Start(ctx context.Context) error {
 				case j := <- fetchOrdersJobs:
 					orders, err := j(errGrCtx)
 					if err != nil {
-						log.Debug().Err(err).Msg("fetch order error")
+						log.Error().Err(err).Msg("fetch order error")
 						return err
 					}
+					for _, o := range orders { ordersCh <- o }
 
-					g.Go(func() error {
-						for _, o := range orders { ordersCh <- o }
-						return nil
-					})
-
-				case o := <- ordersCh:
-					order := o
-					g.Go(func() error {
-						err := a.processOrder(errGrCtx, order)
-						if err != nil { return err }
-						return nil
-					})
 				case <-ctx.Done(): return nil
 			}
 		}
 	})
+
+	for i := 1; i <= cfg.WorkerCount ; i++ {
+		g.Go(func() error {
+			for order := range ordersCh {
+				err := a.processOrder(errGrCtx, order)
+				if err != nil { return err }
+			}
+			return nil
+		})
+	}
 
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("worker error: %w", err)
@@ -79,7 +85,7 @@ func (a *agent) processOrder(ctx context.Context, o models.Order) error {
 	err := a.client.Fetch(&o)
 
 	if err != nil {
-		log.Debug().Err(err).Msg("fetch order error")
+		log.Error().Err(err).Msg("fetch order error")
 		return err
 	}
 

@@ -67,7 +67,7 @@ func (br *balanceRepo) Get(ctx context.Context, userID int) (*models.Balance, er
 		func() (any, error) {
 			rows, err := br.db.Query(
 				ctx,
-				"SELECT * FROM balances WHERE user_id = @uid",
+				"SELECT user_id, current, withdrawn FROM balances WHERE user_id = @uid",
 				pgx.NamedArgs{ "uid": userID, },
 			)
 
@@ -106,7 +106,7 @@ func (br *balanceRepo) Withdraw(ctx context.Context, wr models.WithdrawRequest) 
 				return nil, fmt.Errorf("failed to start transaction: %w", err)
 			}
 			defer tx.Rollback(ctx)
-			_, err = br.db.Exec(
+			_, err = tx.Exec(
 				ctx,
 				"UPDATE balances SET current = current - @sum, withdrawn = withdrawn + @sum WHERE user_id = @uid",
 				pgx.NamedArgs{ "sum": wr.Sum, "uid": wr.UID },
@@ -120,8 +120,11 @@ func (br *balanceRepo) Withdraw(ctx context.Context, wr models.WithdrawRequest) 
 				return 0, fmt.Errorf("failed to update balance: %w", err)
 			}
 
-			err = br.repository.WithdrawRequests.Create(ctx, wr)
-
+			_, err = tx.Exec(
+				ctx,
+				"INSERT INTO withdraw_requests (user_id, order_number, sum_value) VALUES (@uid, @orNum, @sum)",
+				pgx.NamedArgs{ "sum": wr.Sum, "orNum": wr.Order, "uid": wr.UID },
+			)
 			if err != nil {
 				return nil, fmt.Errorf("failed register withdraw request, %w", err)
 			}
